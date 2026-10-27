@@ -85,5 +85,46 @@
     </script>
 </body>
 </html>
+            <p><strong>Girard Endeavours LLC</strong> — Owner / Project Manager (2021-2023)</p>
+            <p><strong>Atlas Fence</strong> — Lead Fabricator / Shop Operations Coordinator (2019-2021)</p>
+        </section>
+
+        <!-- Education -->
+        <section class="section-block">
+            <h2>Education</h2>
+            <p><strong>Housatonic Community College</strong> — Technology Coursework (2026-Present)</p>
+            <p><strong>Three Rivers Community College</strong> — Associate Studies (GPA: 3.8)</p>
+        </section>
+
+        <!-- Technical Skills -->
+        <section class="section-block">
+            <h2>Technical Skills & Core Competencies</h2>
+            <p><strong>Technical Support:</strong> Hardware Installation, Systems Troubleshooting, Quality Assurance, Preventative Maintenance, Security Infrastructure, Asset Management.</p>
+            <p><strong>Operations & PM:</strong> Technical Document Interpretation, Blueprints and Schematics, Project Coordination, Vendor Management, Risk Mitigation, Resource Allocation.</p>
+        </section>
+
+        <!-- The Live Counter Container -->
+        <div class="counter">
+            👀 Cloud Portfolio Views: <span id="count">Loading...</span>
+        </div>
+    </div>
+
+    <!-- The Backend Connection Logic -->
+    <script>
+        const apiUrl = "https://amazonaws.com"; 
+        async function getCounter() {
+            try {
+                let response = await fetch(apiUrl);
+                let data = await response.json();
+                document.getElementById('count').innerText = data.count; 
+            } catch (error) {
+                console.log("Error loading counter:", error);
+                document.getElementById('count').innerText = "Active";
+            }
+        }
+        getCounter();
+    </script>
+</body>
+</html>
 
 
