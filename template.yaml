@@ -1,0 +1,61 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Paul Girard Cloud Resume Serverless Backend IaC
+
+Resources:
+  # 1. DynamoDB Table Resource
+  ResumeTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      TableName: cloud-resume-stats
+      PrimaryKey:
+        Name: id
+        Type: String
+
+  # 2. Lambda Function Resource
+  ResumeCounterFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: resume-visitor-counter-iac
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      CodeUri: ./backend/
+      InlineCode: |
+        import json
+        import boto3
+        
+        dynamodb = boto3.resource('dynamodb')
+        table = dynamodb.Table('cloud-resume-stats')
+        
+        def lambda_handler(event, context):
+            response = table.update_item(
+                Key={'id': 'visitors'},
+                UpdateExpression='ADD #c :val',
+                ExpressionAttributeNames={'#c': 'count'},
+                ExpressionAttributeValues={':val': 1},
+                ReturnValues='UPDATED_NEW'
+            )
+            views = int(response['Attributes']['count'])
+            return {
+                'statusCode': 200,
+                'headers': {
+                    'Access-Control-Allow-Headers': 'Content-Type',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'OPTIONS,GET'
+                },
+                'body': json.dumps({'count': views})
+            }
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: cloud-resume-stats
+      Events:
+        CounterApi:
+          Type: HttpApi
+          Properties:
+            Path: /resume-visitor-counter
+            Method: get
+
+Outputs:
+  FetchCounterApi:
+    Description: "API Gateway Endpoint URL to paste into your index.html"
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}://"
