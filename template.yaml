@@ -59,3 +59,4 @@ Outputs:
   FetchCounterApi:
     Description: "API Gateway Endpoint URL to paste into your index.html"
     Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}://"
+
