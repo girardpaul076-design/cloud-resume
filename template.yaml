@@ -2,6 +2,17 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Paul Girard Cloud Resume Serverless Backend IaC
 
+Globals:
+  HttpApi:
+    CorsConfiguration:
+      AllowMethods:
+        - GET
+        - OPTIONS
+      AllowHeaders:
+        - Content-Type
+      AllowOrigins:
+        - '*' # This opens the browser security gate so your website can load the numbers!
+
 Resources:
   # 1. DynamoDB Table Resource
   ResumeTable:
@@ -12,21 +23,20 @@ Resources:
         Name: id
         Type: String
 
-  # 2. Lambda Function Resource
+  # 2. Lambda Function Resource with Native HTTP API Trigger
   ResumeCounterFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: resume-visitor-counter-iac
-      Handler: lambda_function.lambda_handler
+      Handler: index.lambda_handler
       Runtime: python3.12
-      CodeUri: ./backend/
       InlineCode: |
         import json
         import boto3
-        
+
         dynamodb = boto3.resource('dynamodb')
         table = dynamodb.Table('cloud-resume-stats')
-        
+
         def lambda_handler(event, context):
             response = table.update_item(
                 Key={'id': 'visitors'},
@@ -35,29 +45,31 @@ Resources:
                 ExpressionAttributeValues={':val': 1},
                 ReturnValues='UPDATED_NEW'
             )
-            views = int(response['Attributes']['count'])
+            
+            # Format the output data precisely so your JavaScript can read data.count
+            views_count = int(response['Attributes']['count'])
+            
             return {
                 'statusCode': 200,
                 'headers': {
-                    'Access-Control-Allow-Headers': 'Content-Type',
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Methods': 'OPTIONS,GET'
+                    'Content-Type': 'application/json'
                 },
-                'body': json.dumps({'count': views})
+                'body': json.dumps({'count': views_count})
             }
       Policies:
         - DynamoDBCrudPolicy:
             TableName: cloud-resume-stats
       Events:
-        CounterApi:
+        CounterApiEvent:
           Type: HttpApi
           Properties:
             Path: /resume-visitor-counter
             Method: get
 
 Outputs:
-  FetchCounterApi:
-    Description: "API Gateway Endpoint URL to paste into your index.html"
+  LiveCounterApiUrl:
+    Description: "Copy this exact URL and paste it into your index.html file"
     Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}://"
+
 
 
