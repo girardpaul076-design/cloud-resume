@@ -43,7 +43,14 @@ Resources:
         - AttributeName: id
           KeyType: HASH
 
-  # 3. Visitor Counter Function with Inline Telemetry Logging
+  # 3. Explicit Log Group for Visitor Counter (Guarantees order for subscription filter)
+  ResumeCounterLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/resume-visitor-counter-iac"
+      RetentionInDays: 30
+
+  # 4. Visitor Counter Function with Inline Telemetry Logging
   ResumeCounterFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -114,7 +121,7 @@ Resources:
             Path: /resume-visitor-counter
             Method: get
 
-  # 4. SIEM Processor Function (Inline Code - No CodeUri needed!)
+  # 5. SIEM Processor Function
   SecurityMonitorFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -174,21 +181,17 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref MetricsTable
 
-  # 5. CloudWatch Subscription Filter
+  # 6. CloudWatch Subscription Filter (Explicitly depends on the LogGroup)
   SiemsLogSubscription:
     Type: AWS::Logs::SubscriptionFilter
+    DependsOn: ResumeCounterLogGroup
     Properties:
-      LogGroupName: !Sub "/aws/lambda/${ResumeCounterFunction}"
+      LogGroupName: !Ref ResumeCounterLogGroup
       FilterPattern: "cloud-resume-visitor-counter"
       DestinationArn: !GetAtt SecurityMonitorFunction.Arn
 
+  # 7. Lambda Permission allowing CloudWatch Logs to invoke the SIEM processor
   SIEMInvokePermission:
-    Type: AWS::Logs::LogGroup # Ensures log group exists for permissions
-    Metadata:
-      Comment: "Log Group for visitor counter"
-    DependsOn: ResumeCounterFunction
-
-  SIEMInvokePermissionLambda:
     Type: AWS::Lambda::Permission
     Properties:
       Action: lambda:InvokeFunction
