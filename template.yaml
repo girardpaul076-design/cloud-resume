@@ -66,7 +66,6 @@ Resources:
         IP_HASH_SALT = os.environ.get("IP_HASH_SALT", "fallback-dev-salt-12345")
 
         def lambda_handler(event, context):
-            # Extract request context for SIEM telemetry
             headers = {k.lower(): v for k, v in event.get("headers", {}).items()}
             http_ctx = event.get("requestContext", {}).get("http", {})
             
@@ -77,7 +76,6 @@ Resources:
             method = http_ctx.get("method", "GET")
             timestamp = int(datetime.now(timezone.utc).timestamp() * 1000)
 
-            # Atomic increment on visitor count
             response = table.update_item(
                 Key={'id': 'visitors'},
                 UpdateExpression='ADD #c :val',
@@ -88,7 +86,6 @@ Resources:
             
             views_count = int(response['Attributes']['count'])
             
-            # Emit structured telemetry log for the SIEM subscription filter
             telemetry_payload = {
                 "source": "cloud-resume-visitor-counter",
                 "IpHash": ip_hash,
@@ -117,23 +114,67 @@ Resources:
             Path: /resume-visitor-counter
             Method: get
 
-  # 4. SIEM Processor Function
+  # 4. SIEM Processor Function (Inline Code - No CodeUri needed!)
   SecurityMonitorFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: SecurityMonitorFunction
-      CodeUri: .
-      Handler: siem_processor.lambda_handler
+      Handler: index.lambda_handler
       Runtime: python3.12
       Timeout: 15
       Environment:
         Variables:
           METRICS_TABLE: !Ref MetricsTable
+      InlineCode: |
+        import os
+        import json
+        import base64
+        import gzip
+        import boto3
+
+        dynamodb = boto3.resource("dynamodb")
+        METRICS_TABLE_NAME = os.environ.get("METRICS_TABLE", "SiemMetricsTable")
+        metrics_table = dynamodb.Table(METRICS_TABLE_NAME)
+
+        def lambda_handler(event, context):
+            compressed_payload = base64.b64decode(event['awslogs']['data'])
+            uncompressed_data = gzip.decompress(compressed_payload)
+            log_data = json.loads(uncompressed_data)
+
+            recon_indicators = ["curl", "python-requests", "nikto", "sqlmap", "gobuster", "nmap", "masscan"]
+
+            for log_event in log_data.get("logEvents", []):
+                message = log_event.get("message", "")
+                try:
+                    if "cloud-resume-visitor-counter" in message:
+                        data = json.loads(message)
+                        user_agent = data.get("UserAgent", "").lower()
+                        ip_hash = data.get("IpHash", "unknown")
+                        timestamp = data.get("Timestamp", "0")
+                        
+                        is_suspicious = any(scanner in user_agent for scanner in recon_indicators)
+                        metric_id = f"VISIT#{ip_hash}#{timestamp}"
+
+                        metrics_table.put_item(
+                            Item={
+                                "id": metric_id,
+                                "IpHash": ip_hash,
+                                "UserAgent": user_agent,
+                                "Path": data.get("Path", "/"),
+                                "Method": data.get("Method", "GET"),
+                                "IsSuspicious": is_suspicious,
+                                "Timestamp": timestamp
+                            }
+                        )
+                except Exception as e:
+                    print(f"SIEM Error: {str(e)}")
+
+            return {"statusCode": 200, "body": "Processed"}
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref MetricsTable
 
-  # 5. CloudWatch Subscription Filter to pipe Visitor Counter logs into SIEM
+  # 5. CloudWatch Subscription Filter
   SiemsLogSubscription:
     Type: AWS::Logs::SubscriptionFilter
     Properties:
@@ -142,6 +183,12 @@ Resources:
       DestinationArn: !GetAtt SecurityMonitorFunction.Arn
 
   SIEMInvokePermission:
+    Type: AWS::Logs::LogGroup # Ensures log group exists for permissions
+    Metadata:
+      Comment: "Log Group for visitor counter"
+    DependsOn: ResumeCounterFunction
+
+  SIEMInvokePermissionLambda:
     Type: AWS::Lambda::Permission
     Properties:
       Action: lambda:InvokeFunction
