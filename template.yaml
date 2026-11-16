@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Paul Girard Cloud Resume Serverless Backend IaC
+Description: Paul Girard Cloud Resume Serverless Backend & SIEM Architecture
 
 Globals:
   HttpApi:
@@ -11,10 +11,17 @@ Globals:
       AllowHeaders:
         - Content-Type
       AllowOrigins:
-        - '*' # This opens the browser security gate so your website can load the numbers!
+        - '*'
+
+Parameters:
+  IpHashSalt:
+    Type: String
+    Default: 'fallback-dev-salt-12345'
+    Description: Secret salt for visitor IP hashing.
+    NoEcho: true
 
 Resources:
-  # 1. DynamoDB Table Resource
+  # 1. DynamoDB Table for Visitor Counter
   ResumeTable:
     Type: AWS::Serverless::SimpleTable
     Properties:
@@ -23,21 +30,54 @@ Resources:
         Name: id
         Type: String
 
-  # 2. Lambda Function Resource with Native HTTP API Trigger
+  # 2. DynamoDB Table for SIEM Metrics
+  MetricsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: SiemMetricsTable
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  # 3. Visitor Counter Function with Inline Telemetry Logging
   ResumeCounterFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: resume-visitor-counter-iac
       Handler: index.lambda_handler
       Runtime: python3.12
+      Timeout: 10
+      Environment:
+        Variables:
+          IP_HASH_SALT: !Ref IpHashSalt
       InlineCode: |
         import json
+        import hashlib
+        import os
         import boto3
+        from datetime import datetime, timezone
 
         dynamodb = boto3.resource('dynamodb')
         table = dynamodb.Table('cloud-resume-stats')
+        IP_HASH_SALT = os.environ.get("IP_HASH_SALT", "fallback-dev-salt-12345")
 
         def lambda_handler(event, context):
+            # Extract request context for SIEM telemetry
+            headers = {k.lower(): v for k, v in event.get("headers", {}).items()}
+            http_ctx = event.get("requestContext", {}).get("http", {})
+            
+            raw_ip = http_ctx.get("sourceIp", "unknown")
+            ip_hash = hashlib.sha256(f"{IP_HASH_SALT}:{raw_ip}".encode()).hexdigest()
+            user_agent = headers.get("user-agent", "").lower()
+            path = http_ctx.get("path", "/")
+            method = http_ctx.get("method", "GET")
+            timestamp = int(datetime.now(timezone.utc).timestamp() * 1000)
+
+            # Atomic increment on visitor count
             response = table.update_item(
                 Key={'id': 'visitors'},
                 UpdateExpression='ADD #c :val',
@@ -46,13 +86,24 @@ Resources:
                 ReturnValues='UPDATED_NEW'
             )
             
-            # Format the output data precisely so your JavaScript can read data.count
             views_count = int(response['Attributes']['count'])
             
+            # Emit structured telemetry log for the SIEM subscription filter
+            telemetry_payload = {
+                "source": "cloud-resume-visitor-counter",
+                "IpHash": ip_hash,
+                "UserAgent": user_agent,
+                "Path": path,
+                "Method": method,
+                "Timestamp": str(timestamp)
+            }
+            print(json.dumps(telemetry_payload))
+
             return {
                 'statusCode': 200,
                 'headers': {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
                 },
                 'body': json.dumps({'count': views_count})
             }
@@ -66,10 +117,39 @@ Resources:
             Path: /resume-visitor-counter
             Method: get
 
+  # 4. SIEM Processor Function
+  SecurityMonitorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SecurityMonitorFunction
+      CodeUri: .
+      Handler: siem_processor.lambda_handler
+      Runtime: python3.12
+      Timeout: 15
+      Environment:
+        Variables:
+          METRICS_TABLE: !Ref MetricsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MetricsTable
+
+  # 5. CloudWatch Subscription Filter to pipe Visitor Counter logs into SIEM
+  SiemsLogSubscription:
+    Type: AWS::Logs::SubscriptionFilter
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ResumeCounterFunction}"
+      FilterPattern: "cloud-resume-visitor-counter"
+      DestinationArn: !GetAtt SecurityMonitorFunction.Arn
+
+  SIEMInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref SecurityMonitorFunction
+      Principal: !Sub "logs.${AWS::Region}.amazonaws.com"
+      SourceArn: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/resume-visitor-counter-iac:*"
+
 Outputs:
   LiveCounterApiUrl:
     Description: "Copy this exact URL and paste it into your index.html file"
-    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}://"
-
-
-
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/"
