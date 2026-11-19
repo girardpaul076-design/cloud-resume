@@ -23,9 +23,9 @@
     <div class="container">
         <header>
             <h1>Paul Girard</h1>
-            <p><strong>IT Support & Cloud Portfolio Specialist</strong></p>
+            <p><strong>IT Support &amp; Cloud Portfolio Specialist</strong></p>
             <p>📍 Newington, CT | 📱 (860) 770-0512 | ✉️ girardpaul076@gmail.com</p>
-            <p>🌐 Portfolio: <a href=https://main.d3fza2e9ubh05j.amplifyapp.com/</a> | 🔗 <a href="https://github.com" target="_blank">GitHub</a></p>
+            <p>🌐 Portfolio: <a href="https://main.d3fza2e9ubh05j.amplifyapp.com/" target="_blank" rel="noopener noreferrer">https://main.d3fza2e9ubh05j.amplifyapp.com/</a> | 🔗 <a href="https://github.com" target="_blank" rel="noopener noreferrer">GitHub</a></p>
         </header>
 
         <section class="section-block">
@@ -39,10 +39,10 @@
         </section>
 
         <section class="section-block">
-            <h2>Technical Projects & Practical Training</h2>
+            <h2>Technical Projects &amp; Practical Training</h2>
             <div class="section-block">
                 <div class="item-title"><span>AWS Cloud Resume Challenge</span> <span>October 2026</span></div>
-                <div class="sub-title">Cloud Infrastructure & CI/CD Project</div>
+                <div class="sub-title">Cloud Infrastructure &amp; CI/CD Project</div>
                 <ul>
                     <li>Provisioned a public high-availability static web application architecture utilizing Amazon S3 storage buckets.</li>
                     <li>Configured global Content Delivery Network (CDN) mechanisms using AWS CloudFront for secure network isolation and speed optimization.</li>
@@ -55,7 +55,7 @@
                 <p style="margin: 4px 0;">Deployed and managed virtualized test environments using VMware and VirtualBox to study enterprise access controls and domain environments.</p>
             </div>
             <div class="section-block">
-                <div class="item-title"><span>Identity & Access Management (IAM) Labs</span></div>
+                <div class="item-title"><span>Identity &amp; Access Management (IAM) Labs</span></div>
                 <p style="margin: 4px 0;">Configured user groups, permissions, and security policies following the principle of least privilege.</p>
             </div>
             <div class="section-block">
@@ -104,7 +104,7 @@
             </div>
             <div class="section-block">
                 <div class="item-title"><span>Atlas Fence — Branford, CT</span> <span>2019 — 2021</span></div>
-                <div class="sub-title">Lead Fabricator & Shop Operations Coordinator</div>
+                <div class="sub-title">Lead Fabricator &amp; Shop Operations Coordinator</div>
                 <ul>
                     <li>Directed daily technical operations within the fabrication facility, leading technical training and skill development for onsite personnel.</li>
                     <li>Optimized supply workflows and manufacturing pipelines to keep cross-functional installation crews ahead of operational schedules.</li>
@@ -128,8 +128,8 @@
 
         <!-- Technical Skills -->
         <section class="section-block">
-            <h2>Core Competencies & Tech Skills</h2>
-            <p><strong>Core Systems Navigation:</strong> Infrastructure Maintenance, Project Management, Vendor Management, Operational Workflows, Blueprints & Schematics.</p>
+            <h2>Core Competencies &amp; Tech Skills</h2>
+            <p><strong>Core Systems Navigation:</strong> Infrastructure Maintenance, Project Management, Vendor Management, Operational Workflows, Blueprints &amp; Schematics.</p>
             <p><strong>Technical Troubleshooting:</strong> Hardware Deployment, Resource Allocation, Quality Assurance, Risk Mitigation, Preventative Maintenance.</p>
             <p><strong>Soft Skills:</strong> Technical Communication, Cross-Functional Team Leadership, Active Problem Solving, Rapid Adaptation.</p>
         </section>
@@ -142,18 +142,34 @@
 
     <!-- Backend API Integration Script -->
     <script>
-        const apiUrl = "https://nbi6mcoj0m.execute-api.us-east-2.amazonaws.com/default/resume-visitor-counter"
+        const apiUrl = "https://amf2gdtvnk.execute-api.us-east-2.amazonaws.com";
+
         async function getCounter() {
+            const countEl = document.getElementById("count");
             try {
-                let response = await fetch(apiUrl);
-                let data = await response.json();
-                document.getElementById('count').innerText = data.count; 
+                const response = await fetch(apiUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ page: window.location.pathname || "/" }),
+                    cache: "no-store"
+                });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const data = await response.json();
+                const value = data.visitor_count ?? data.count;
+                if (countEl && value !== undefined) {
+                    countEl.innerText = Number(value).toLocaleString();
+                }
             } catch (error) {
-                console.log("Error loading counter:", error);
-                document.getElementById('count').innerText = "Active";
+                console.error("Error loading counter:", error);
+                if (countEl) {
+                    countEl.innerText = "Active";
+                }
             }
         }
-        getCounter();
+
+        document.addEventListener("DOMContentLoaded", getCounter);
     </script>
 </body>
 </html>
